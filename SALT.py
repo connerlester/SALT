@@ -13,10 +13,10 @@ def reload(module_name):
 '''
 import *THE NAME OF THIS .py FILE* as salt # import this .py module 
 
-salt.__INIT__(ejections=1) # init transport (must do)
-# assuming ejections are on (=1) for this example
+salt.action() # init transport (must do)
 
 RUN_TIME=100 #sqrt{d/g'} run time 
+
 
 while salt.T< RUN_TIME: ## time loop
 
@@ -44,6 +44,7 @@ while salt.T< RUN_TIME: ## time loop
     ## ... and repeat
 
 '''
+
 ## note that I am leaving out the code where I did the data analysis,
 # where I save particle trajectory distributions and profiles with Z and did fourier transforms etc to get some of the 
 # plots in my slides. Adding all that extra code made this file more cluttered than it already is so I took it out...
@@ -63,17 +64,18 @@ while salt.T< RUN_TIME: ## time loop
     # aka the grain Reynolds Number
 ## 3.) Shields Number--turbulent shear stress over the normal force needed to remove a grain from a 1d deep pocket in the bed
 
-T=0
-dt = .01
-dt0 = dt/1000
-TSAVE = int(1/dt)
-Zmax = 800
-Zmin = 0.5
-NZ = 85
-zfact = np.log(Zmax/Zmin)/NZ
+## GLOBAL VARS
+T=0 #init run time
+dt = .01 # time step
+dt0 = dt/1000 # bed impact time step
+TSAVE = int(1/dt) # save trajectory time
+Zmax = 800 # domain height
+Zmin = 0.5 # min elevation (grain radius)
+NZ = 85 # number of Z bins
+zfact = np.log(Zmax/Zmin)/NZ # factor
 Z = lambda i: Zmin*np.exp(i*zfact) ## fxn to get Z for a given bin index
 dZ = lambda z: z*(np.exp(zfact)-1) ## fxn to get dZ at a given Z
-# elevation Z is log-binned
+#### elevation Z is log-binned ####
 def Zindex(z):
     ## returns index for a given Z value  
     if z>=Zmin:return np.log(z/Zmin)/zfact
@@ -83,7 +85,10 @@ def Zindex(z):
 mod, Lhop0 ,Lhop, dLhop= [], [],[],[]
 
 
-pars = []
+pars = [] ## particle list
+
+
+## initialize model run with this class and arbuments in __init__ ( ex: salt.action(A=1,k=10) for transport over a ripple of amplitude 1d and wavenumber k=L/lambda=10)
 class action:
 
     def __init__(self,
@@ -91,10 +96,11 @@ class action:
         Ga = 22, ## = sqrt[sg'd]/(nu/d)
         u_ = 3, ## = u*/uth -- ratio of shear velocity u_* at z-->infinity and at transport threshold (z-->surface)
         uth = 2.83, ## rough transport threshold for s=2000
-        L = 1000,
-        A = 0, k = 3,delx=1,
-        NOWIND=0, NODRAG=0, NOVDRAG=0, ELASTIC=0, EJECTIONS=1, FLUIDGRAIN_FEEDBACK=0,DEM_FLOW=1,
-        N0 =0
+        L = 1000, ## domain length
+        A = 0, k = 3, ## ripples: amplitude and wavenumber
+        delx=1, ## surface gradient step 
+        NOWIND=0, NODRAG=0, NOVDRAG=0, ELASTIC=0, EJECTIONS=1, FLUIDGRAIN_FEEDBACK=0,DEM_FLOW=1, ## all flags
+        N0 =0 ## number of pars in transport at t=0 (if N0=0 it is set to default value for a given u*/uth)
         ):  
         
         self.s,self.Ga = s,Ga
@@ -108,20 +114,26 @@ class action:
         self.NSS = int((1/.63)*(self.shields-self.shieldsth)*L)
         self.N0 = self.NSS if N0==0 else N0
         self.L = L
-        self.set()
+        self.set() ## setting params above---see below
 
     def set(self):
         m=self
+
+        ## MAKING EVERYING GLOBAL---proabably a better way to do this
         global s,Ga,ustar,uth,shields,shieldsth,A,k,NSS,L
         global NOWIND,NODRAG,NOVDRAG,ELASTIC,EJECTIONS,FLUIDGRAIN_FEEDBACK,DEM_FLOW
         global ZZ, dZZ, XX, Zsurf, F, uf, delx
         s,Ga,ustar,uth,shields,shieldsth,A,k,NSS,L,delx = m.s,m.Ga,m.ustar,m.uth,m.shields,m.shieldsth,m.A,m.k,m.NSS,m.L,m.delx
         NOWIND,NODRAG,NOVDRAG,ELASTIC,EJECTIONS,FLUIDGRAIN_FEEDBACK,DEM_FLOW = m.NOWIND,m.NODRAG,m.NOVDRAG,m.ELASTIC,m.EJECTIONS,m.FLUIDGRAIN_FEEDBACK,m.DEM_FLOW
+
+        # init fields 
         ZZ = Z(np.arange(NZ)) # Z-array (vertical)
         dZZ = dZ(ZZ) # dZ-array
         XX = np.arange(L) # X-array (horizontal) -- note dX=1d
         field = fields()
         Zsurf, F, uf = field.Zsurf, field.F, field.uf
+
+        #init pars
         for i in range(m.N0): 
             x = np.random.randint(0,L) # random x-position
             z = 50+np.random.exponential(20)  + Zsurf[int(x)] + A # exponential decaying particle consentration with Z
@@ -134,7 +146,7 @@ class action:
                       z = z)
 
 
-      
+ ## flow field and surface elevation field
 class fields:
     def __init__(self):
         self.Zsurf = A*np.cos(2*np.pi*k*XX/L) + Zmin ## surface at grain raduis above z=0 (Zsurf=0+Zmin by default)
@@ -144,6 +156,7 @@ class fields:
         else: self.uf = fluid_integration()
         if NOWIND: self.uf*=0
 
+## mixing length model for flow profile
 def fluid_integration():
         ## the particle born shear stress is the sum of fluid forces/area above elevation Z
         taup = np.array([np.sum((F)[y:]) for y in range(NZ)]) # sum
@@ -159,11 +172,15 @@ def fluid_integration():
         uf = np.array([np.sum(dufdz[:y]*dZZ[:y]) for y in range(NZ) ])+uth
         return uf 
 
+# drag coeff for sphere
 def Cdrag( u_rel ):
     Ru = Ga/np.sqrt(s) 
     C = (np.sqrt(.5*u_rel) + np.sqrt(24/Ru))**2 
     return C   
 
+
+
+## grain functions
 class particle: ## all particles and their properties go here
 
     def __init__(self, u,v,x,z, new=0 ):
@@ -185,28 +202,14 @@ class particle: ## all particles and their properties go here
         
         p.ax,p.az = p.forces() ## find forces/mass on particle p
 
-        Zrelp = p.Zrel()
-        zprev = p.z
         ## Verlet Integration
-
         p.x += p.u*dt + .5*p.ax*dt**2 # step position forward
         p.z += p.v*dt + .5*p.az*dt**2
         ## EVERY TIME YOU STEP p.x CHECK BOUNDARY CONDITIONS!
         p.xbounds() 
 
-
-        if p.Zrel()<3 and Zrelp>3:
-            mod.append(p.x)
-
-        if zprev > p.zup and p.z < p.zup:
-            p.l0 = p.x + p.xcross*L - p.xup
-            Lhop0.append( p.l0 )
-
-        
-
         ## check for bed impact
         if p.Zrel() < 0: # if pars Z-position relative to Zsurf is < 0...
-            if p.Nrebs>0: p.flat_stat()
 
             p.bedimpact() ## impact! (see below)
             
@@ -214,16 +217,6 @@ class particle: ## all particles and their properties go here
                 p.x += p.u*p.dt + .5*p.ax*p.dt**2 ## advance the rest of the time step (see bedimpact fxn below)
                 p.z += p.v*p.dt + .5*p.az*p.dt**2
                 p.xbounds() # check bounds
-
-                if p.Nrebs>0:
-                    Lhop.append(p.x + p.xcross*L - p.xup)
-                    dLhop.append(p.x + p.xcross*L - p.xup - p.l0)
-                # reset stats
-                p.zup = p.z
-                p.xup = p.x
-                p.xcross = 0
-                p.l0=0
-
 
         
         if not p.dead: 
@@ -237,20 +230,7 @@ class particle: ## all particles and their properties go here
         # FLAG: this never happened but just incase
         if p.z>Zmax: raise ValueError('Zmax exceeded !!!')
 
-    def flat_stat(self):
-        p=self
-        zdown = p.z
-        xdown = p.x
-        xcross = p.xcross
-        while zdown > p.zup:
-            xdown += p.u*dt + .5*p.ax*dt**2 
-            zdown += p.v*dt + .5*p.az*dt**2
-            if xdown > L:
-                xdown -= L
-                xcross += 1
 
-        p.l0 = xdown + xcross*L - p.xup
-        Lhop0.append( p.l0 )
 
 
     ## second major function for model run
@@ -261,7 +241,8 @@ class particle: ## all particles and their properties go here
         zrel0 = p.Zrel() # init flag
         zrel=zrel0 ## init zrel
 
-        while zrel < 0: ## IMACT !!!
+        ## impact scheme--needs to be updated: instead of stepping back with const dt0, step back with dt/2, then forward dt/4 etc. (iterate until min error is reached--less steps)
+        while zrel < 0: ## IMACT !!! 
 
             p.x = p.x - (p.u*dt0 + .5*p.ax*dt0**2) ## step back the way you came
             p.z = p.z - (p.v*dt0 + .5*p.az*dt0**2) # but with MUCH smaller time step dt0
@@ -356,7 +337,7 @@ class particle: ## all particles and their properties go here
         p=self
         ## need to input impact velocity from rebound fxn
 
-        ## const params (arb)
+        ## const params (arb!)
         ErebLimit, NejLimit, EejLimit, Pmax = 10, 30, 40, 0.8
 
         Eimp = .5*Vimp**2 # impact energy
@@ -373,6 +354,8 @@ class particle: ## all particles and their properties go here
         else:
             p.Nrebs+=1 ## if rebound add 1
 
+
+        ## NEEDS UPDATE!!! THIS IS WEIRD!!!
         r = .5*np.random.rand()
         factor = r*(NSS/len(pars)-1) if not FLUIDGRAIN_FEEDBACK else .1/Eimp**(r)
         Ebed = (1-p.e**2)*Eimp*factor if factor > 0 else 0 ## bed energy for ejections!
@@ -478,7 +461,7 @@ class particle: ## all particles and their properties go here
 
         F[zi] += (np.pi/6)*(Fdragx)/L  ## Particle force (per unit area) on fluid
 
-    ## save par info   
+    ## save par info !!  
     def save_trajectory(self):
         p=self 
         # save info for a full time unit sqrt[d/g']
@@ -493,9 +476,11 @@ class particle: ## all particles and their properties go here
 
 
 
+### FLOW PROFILES FOR STEADY STATE TRANSPORT! OBTAINED FROM GRAIN SCALE DEM MODEL
+# ALL FOR s=2000:
+u_DEM = np.array([1.5, 2. , 2.5, 3. , 3.5, 4. , 4.5, 5.]) #u*/uth 
 
-u_DEM = np.array([1.5, 2. , 2.5, 3. , 3.5, 4. , 4.5, 5.])
-Z_DEM = np.array([-4.00000e+00, -3.90000e+00, -3.80000e+00, -3.70000e+00,
+Z_DEM = np.array([-4.00000e+00, -3.90000e+00, -3.80000e+00, -3.70000e+00, ## elevations
        -3.60000e+00, -3.50000e+00, -3.40000e+00, -3.30000e+00,
        -3.20000e+00, -3.10000e+00, -3.00000e+00, -2.90000e+00,
        -2.80000e+00, -2.70000e+00, -2.60000e+00, -2.50000e+00,
@@ -517,7 +502,7 @@ Z_DEM = np.array([-4.00000e+00, -3.90000e+00, -3.80000e+00, -3.70000e+00,
         1.42426e+02,  1.70911e+02,  2.05093e+02,  2.46112e+02,
         2.95334e+02,  3.54401e+02,  4.25281e+02,  5.10337e+02,
         6.12405e+02,  7.34886e+02,  8.81863e+02])
-uf_DEM = np.array([[0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00,
+uf_DEM = np.array([[0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, ##flow profiles for each u* in order
         0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00,
         0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00,
         0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00,
@@ -695,6 +680,7 @@ uf_DEM = np.array([[0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+
         1.72588357e+02, 1.79084339e+02, 1.81927037e+02]])
 
 
+## set the above data to the SALT grid
 def DEM_flow(u_):
     from scipy.interpolate import interp1d
     from scipy.optimize import curve_fit
@@ -757,4 +743,3 @@ def loop__gif(camera,eX,eZ,vf,ax,grainsize):
 def save_gif(camera,gif_name,dpi=400):
     animation = camera.animate()
     animation.save(gif_name+'.gif', writer = 'imagemagick',dpi=dpi)
-
