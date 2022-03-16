@@ -2,4 +2,4 @@
 Idealized Sediment Transport Model
 
 
-<img src="ripple.gif"/>
+<img src="/ripple.gif"/>
