@@ -443,7 +443,7 @@ class particle: ## all particles and their properties go here
         if a==b:
             return uf[a]
         else:
-            ufz = uf[a]+ (p.z - ZZ[a])*(uf[b]-uf[a])/(Z(b)-Z(a)) #linear interpolation uf(zrel)
+            ufz = uf[a]+ (zrel - ZZ[a])*(uf[b]-uf[a])/(Z(b)-Z(a)) #linear interpolation uf(zrel)
             return ufz
 
     ##########################################################################################
